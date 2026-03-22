@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { AGENTS, Agent } from '@/lib/agents';
+import { SQUADS, AGENTS, Agent, Squad } from '@/lib/agents';
 import styles from './page.module.css';
 
 interface Message {
@@ -14,9 +14,9 @@ const EXAMPLE_PROMPTS = [
   "Meu negócio está estagnado em R$50k/mês",
   "Preciso criar uma oferta irresistível",
   "Como gerar mais leads organicamente?",
-  "Minha taxa de fechamento é muito baixa",
-  "Quero lançar um produto novo do zero",
-  "Como cobrar mais caro sem perder clientes?",
+  "Quero criar uma identidade de marca forte",
+  "Como escalar meu time de vendas?",
+  "Preciso de copy para minha landing page",
 ];
 
 function renderMarkdown(text: string): string {
@@ -43,6 +43,8 @@ export default function Home() {
   const [isThinking, setIsThinking] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [selectedSquad, setSelectedSquad] = useState<Squad | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -58,6 +60,16 @@ export default function Home() {
     el.style.height = Math.min(el.scrollHeight, 160) + 'px';
   };
 
+  const filteredAgents = searchQuery
+    ? AGENTS.filter(a =>
+        a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        a.squad.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : selectedSquad
+    ? selectedSquad.agents
+    : null;
+
   const sendMessage = useCallback(async (text?: string) => {
     const content = (text || input).trim();
     if (!content || isLoading) return;
@@ -69,9 +81,7 @@ export default function Home() {
     setIsLoading(true);
     setIsThinking(true);
 
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     try {
       const apiMessages = newMessages.map(m => ({ role: m.role, content: m.content }));
@@ -79,10 +89,7 @@ export default function Home() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: apiMessages,
-          agentId: selectedAgentId,
-        }),
+        body: JSON.stringify({ messages: apiMessages, agentId: selectedAgentId }),
       });
 
       if (!res.ok) {
@@ -96,17 +103,13 @@ export default function Home() {
       setActiveAgent(routedAgent);
       setIsThinking(false);
 
-      if (!selectedAgentId && data.agentId) {
-        setSelectedAgentId(data.agentId);
-      }
+      if (!selectedAgentId && data.agentId) setSelectedAgentId(data.agentId);
 
-      const assistantMsg: Message = {
+      setMessages(prev => [...prev, {
         role: 'assistant',
         content: data.content,
         agent: routedAgent || undefined,
-      };
-
-      setMessages(prev => [...prev, assistantMsg]);
+      }]);
 
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -122,16 +125,18 @@ export default function Home() {
   }, [input, messages, isLoading, selectedAgentId, activeAgent]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
   const handleSelectAgent = (agent: Agent) => {
     setSelectedAgentId(agent.id);
     setActiveAgent(agent);
     setMessages([]);
+  };
+
+  const handleSelectSquad = (squad: Squad) => {
+    setSelectedSquad(sq => sq?.id === squad.id ? null : squad);
+    setSearchQuery('');
   };
 
   const handleNewChat = () => {
@@ -149,7 +154,7 @@ export default function Home() {
             <path d="M6 8h10M6 11h7M6 14h9" stroke="#000" strokeWidth="2" strokeLinecap="round"/>
           </svg>
           xQuads
-          <span className={styles.badge}>HORMOZI</span>
+          <span className={styles.badge}>144 AGENTES</span>
         </div>
 
         <div className={styles.activePill} data-thinking={isThinking}>
@@ -174,24 +179,71 @@ export default function Home() {
       <div className={styles.main}>
         {sidebarOpen && (
           <aside className={styles.sidebar}>
-            <div className={styles.sidebarHeader}>
-              <span>16 AGENTES</span>
+            <div className={styles.sidebarSearch}>
+              <input
+                type="text"
+                placeholder="Buscar agente..."
+                value={searchQuery}
+                onChange={e => { setSearchQuery(e.target.value); setSelectedSquad(null); }}
+                className={styles.searchInput}
+              />
             </div>
+
             <div className={styles.agentsList}>
-              {AGENTS.map(agent => (
-                <button
-                  key={agent.id}
-                  className={styles.agentItem}
-                  data-selected={selectedAgentId === agent.id}
-                  onClick={() => handleSelectAgent(agent)}
-                >
-                  <span className={styles.agentIcon}>{agent.icon}</span>
-                  <div className={styles.agentInfo}>
-                    <div className={styles.agentName}>{agent.name}</div>
-                    <div className={styles.agentTitle}>{agent.title}</div>
+              {searchQuery ? (
+                // Search results
+                <>
+                  <div className={styles.sidebarLabel}>{filteredAgents?.length} resultados</div>
+                  {filteredAgents?.map(agent => (
+                    <button
+                      key={agent.id}
+                      className={styles.agentItem}
+                      data-selected={selectedAgentId === agent.id}
+                      onClick={() => handleSelectAgent(agent)}
+                    >
+                      <span className={styles.agentIcon}>{agent.icon}</span>
+                      <div className={styles.agentInfo}>
+                        <div className={styles.agentName}>{agent.name}</div>
+                        <div className={styles.agentTitle}>{agent.title}</div>
+                      </div>
+                    </button>
+                  ))}
+                </>
+              ) : (
+                // Squad browser
+                SQUADS.map(squad => (
+                  <div key={squad.id}>
+                    <button
+                      className={styles.squadItem}
+                      data-active={selectedSquad?.id === squad.id}
+                      onClick={() => handleSelectSquad(squad)}
+                    >
+                      <span className={styles.squadIcon}>{squad.icon}</span>
+                      <span className={styles.squadName}>{squad.name}</span>
+                      <span className={styles.squadCount}>{squad.agents.length}</span>
+                    </button>
+
+                    {selectedSquad?.id === squad.id && (
+                      <div className={styles.agentsNested}>
+                        {squad.agents.map(agent => (
+                          <button
+                            key={agent.id}
+                            className={styles.agentItem}
+                            data-selected={selectedAgentId === agent.id}
+                            onClick={() => handleSelectAgent(agent)}
+                          >
+                            <span className={styles.agentIcon}>{agent.icon}</span>
+                            <div className={styles.agentInfo}>
+                              <div className={styles.agentName}>{agent.name}</div>
+                              <div className={styles.agentTitle}>{agent.title}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </button>
-              ))}
+                ))
+              )}
             </div>
           </aside>
         )}
@@ -204,13 +256,18 @@ export default function Home() {
                   O que você<br />quer <span>resolver</span>?
                 </div>
                 <div className={styles.welcomeSub}>
-                  Descreva seu problema. A IA escolhe o especialista Hormozi certo e responde com o framework adequado.
+                  144 agentes especializados prontos. A IA escolhe o certo automaticamente — ou selecione um na sidebar.
+                </div>
+                <div className={styles.squadPills}>
+                  {SQUADS.map(sq => (
+                    <button key={sq.id} className={styles.squadPill} onClick={() => { setSidebarOpen(true); handleSelectSquad(sq); }}>
+                      {sq.icon} {sq.name}
+                    </button>
+                  ))}
                 </div>
                 <div className={styles.chips}>
                   {EXAMPLE_PROMPTS.map(p => (
-                    <button key={p} className={styles.chip} onClick={() => sendMessage(p)}>
-                      {p}
-                    </button>
+                    <button key={p} className={styles.chip} onClick={() => sendMessage(p)}>{p}</button>
                   ))}
                 </div>
               </div>
@@ -243,10 +300,8 @@ export default function Home() {
                     <div className={styles.msgContent}>
                       {activeAgent && <div className={styles.agentLabel}>{activeAgent.name}</div>}
                       <div className={`${styles.msgBubble} ${styles.thinking}`}>
-                        <span className={styles.dot1} />
-                        <span className={styles.dot2} />
-                        <span className={styles.dot3} />
-                        <span className={styles.thinkingLabel}>analisando com frameworks Hormozi...</span>
+                        <span className={styles.dot1} /><span className={styles.dot2} /><span className={styles.dot3} />
+                        <span className={styles.thinkingLabel}>selecionando o agente ideal...</span>
                       </div>
                     </div>
                   </div>
@@ -264,15 +319,11 @@ export default function Home() {
                 value={input}
                 onChange={e => { setInput(e.target.value); autoResize(); }}
                 onKeyDown={handleKeyDown}
-                placeholder="Descreva seu problema ou o que quer construir..."
+                placeholder="Descreva seu problema..."
                 rows={1}
                 disabled={isLoading}
               />
-              <button
-                className={styles.sendBtn}
-                onClick={() => sendMessage()}
-                disabled={isLoading || !input.trim()}
-              >
+              <button className={styles.sendBtn} onClick={() => sendMessage()} disabled={isLoading || !input.trim()}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path d="M2 8L14 2L10 8L14 14L2 8Z" fill="currentColor"/>
                 </svg>
