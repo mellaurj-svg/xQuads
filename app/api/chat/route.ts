@@ -5,9 +5,44 @@ import { AGENT_PROMPTS } from '@/lib/agent-prompts';
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'stepfun/step-3.5-flash:free';
 
+type ChatMessage = {
+  role: string;
+  content: string;
+};
+
+function isImageRequest(text: string) {
+  const normalized = text.toLowerCase();
+
+  const visualKeywords = [
+    'imagem',
+    'arte',
+    'foto',
+    'ilustração',
+    'ilustracao',
+    'story',
+    'stories',
+    'post',
+    'thumbnail',
+    'capa',
+    'banner',
+    'criativo',
+    'design',
+    'visual',
+    'logo',
+    'cartaz',
+    'flyer',
+    'gerar imagem',
+    'create image',
+    'image prompt',
+    'instagram story',
+  ];
+
+  return visualKeywords.some(keyword => normalized.includes(keyword));
+}
+
 async function callAI(
   systemPrompt: string,
-  messages: { role: string; content: string }[],
+  messages: ChatMessage[],
   maxTokens = 1500
 ) {
   const res = await fetch(OPENROUTER_API, {
@@ -38,21 +73,74 @@ async function callAI(
 }
 
 async function routeToAgent(userMessage: string): Promise<string> {
-  const routerSystem = `You are a router for a Hormozi business framework AI system.
+  if (isImageRequest(userMessage)) {
+    return 'visual-generator';
+  }
+
+  const routerSystem = `You are a router for a multi-agent AI system.
 Given the user's message, pick the single most relevant agent ID.
 
 Available agents:
 ${ROUTING_GUIDE}
 
 Rules:
-- Respond with ONLY the agent ID (e.g., hormozi-offers)
-- No explanation, no punctuation, just the ID
+- Respond with ONLY the agent ID
+- No explanation
+- No punctuation
 - Default to hormozi-chief if unsure`;
 
   const res = await callAI(routerSystem, [{ role: 'user', content: userMessage }], 30);
   const data = await res.json();
-  const raw = (data.choices?.[0]?.message?.content || '').trim().toLowerCase().replace(/[^a-z-]/g, '');
+  const raw = (data.choices?.[0]?.message?.content || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z-]/g, '');
+
   return AGENTS.find(a => a.id === raw)?.id ?? 'hormozi-chief';
+}
+
+function buildVisualSystemPrompt(basePrompt: string) {
+  return `${basePrompt}
+
+---
+YOU ARE IN VISUAL EXECUTION MODE.
+
+Your job is NOT to explain, teach, route, or refuse.
+
+When the user asks for an image, visual, story, thumbnail, banner, portrait, or design concept:
+- Generate a professional AI image prompt in English
+- Think like an art director
+- Be visually rich and specific
+- Include:
+  - subject
+  - framing
+  - lighting
+  - lens/camera feel
+  - mood
+  - environment
+  - textures
+  - colors
+  - realism/style
+  - composition
+  - platform context when relevant (Instagram Story, post, thumbnail etc.)
+
+Output EXACTLY in this format:
+
+[TITLE]
+short title in Portuguese
+
+[PROMPT]
+detailed image prompt in English
+
+[USE]
+short instruction in Portuguese telling the user to copy the prompt into an image generator
+
+Rules:
+- Do not apologize
+- Do not say you cannot create images
+- Do not explain limitations
+- Do not add extra sections
+- Respond in Portuguese except the PROMPT which must be in English`;
 }
 
 export async function POST(req: NextRequest) {
@@ -64,23 +152,32 @@ export async function POST(req: NextRequest) {
     }
 
     const lastUserMessage = messages[messages.length - 1]?.content || '';
+    const forcedVisual = isImageRequest(lastUserMessage);
+
     const agentId = requestedAgentId || await routeToAgent(lastUserMessage);
-    const agent = AGENTS.find(a => a.id === agentId) ?? AGENTS.find(a => a.id === 'hormozi-chief')!;
+    const agent =
+      AGENTS.find(a => a.id === agentId) ??
+      AGENTS.find(a => a.id === 'hormozi-chief')!;
 
     const agentFileContent = AGENT_PROMPTS[agentId] || '';
-    const systemPrompt = `${agentFileContent}
+
+    const systemPrompt = forcedVisual || agentId === 'visual-generator'
+      ? buildVisualSystemPrompt(agentFileContent)
+      : `${agentFileContent}
 
 ---
 RESPONSE RULES:
 - Be direct, actionable, framework-driven. No fluff.
-- Use Hormozi's vocabulary and mental models from your agent definition above.
 - Structure responses clearly with markdown headers when helpful.
 - Lead with the most important insight.
 - End with a clear next action or follow-up question.
-- Respond in the same language as the user (Portuguese if they write in Portuguese).
-- Be bold. Give the real answer, not the safe answer.`;
+- Respond in the same language as the user (Portuguese if they write in Portuguese).`;
 
-    const res = await callAI(systemPrompt, messages, 1500);
+    const apiMessages = forcedVisual
+      ? [{ role: 'user', content: lastUserMessage }]
+      : messages;
+
+    const res = await callAI(systemPrompt, apiMessages, forcedVisual ? 900 : 1500);
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content || '';
 
@@ -89,8 +186,8 @@ RESPONSE RULES:
       agentId: agent.id,
       agentName: agent.name,
       agentIcon: agent.icon,
+      mode: forcedVisual || agentId === 'visual-generator' ? 'image_prompt' : 'chat',
     });
-
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error';
     console.error('Chat API error:', message);
