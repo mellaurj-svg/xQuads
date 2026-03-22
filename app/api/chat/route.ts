@@ -3,7 +3,7 @@ import { AGENTS, ROUTING_GUIDE } from '@/lib/agents';
 import { AGENT_PROMPTS } from '@/lib/agent-prompts';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL = 'stepfun/step-3.5-flash:free';
+const MODEL = 'openai/gpt-4o-mini'; // melhor qualidade
 
 type ChatMessage = {
   role: string;
@@ -102,45 +102,44 @@ Rules:
 function buildVisualSystemPrompt(basePrompt: string) {
   return `${basePrompt}
 
----
-YOU ARE IN VISUAL EXECUTION MODE.
+YOU ARE A WORLD-CLASS AI IMAGE PROMPT ENGINEER.
 
-Your job is NOT to explain, teach, route, or refuse.
+STRICT RULES:
 
-When the user asks for an image, visual, story, thumbnail, banner, portrait, or design concept:
-- Generate a professional AI image prompt in English
-- Think like an art director
-- Be visually rich and specific
-- Include:
-  - subject
-  - framing
-  - lighting
-  - lens/camera feel
-  - mood
-  - environment
-  - textures
-  - colors
-  - realism/style
-  - composition
-  - platform context when relevant (Instagram Story, post, thumbnail etc.)
+- The PROMPT must ALWAYS be in ENGLISH
+- The TITLE must be in Portuguese
+- The USE must be in Portuguese
+- Do not explain anything
 
-Output EXACTLY in this format:
+The prompt must be EXTREMELY detailed and professional.
+
+Include:
+- subject description
+- camera type (DSLR, cinematic, etc.)
+- lens (85mm, 35mm, etc.)
+- lighting (soft light, golden hour, studio lighting, etc.)
+- mood
+- environment
+- composition
+- realism level
+- color grading
+
+FORMAT:
 
 [TITLE]
-short title in Portuguese
+Título curto em português
 
 [PROMPT]
-detailed image prompt in English
+Highly detailed cinematic image prompt in English
 
 [USE]
-short instruction in Portuguese telling the user to copy the prompt into an image generator
+Copie e cole o prompt em um gerador de imagem como Leonardo, Midjourney ou Bing
 
-Rules:
-- Do not apologize
-- Do not say you cannot create images
-- Do not explain limitations
-- Do not add extra sections
-- Respond in Portuguese except the PROMPT which must be in English`;
+DO NOT:
+- apologize
+- explain limitations
+- break format
+`;
 }
 
 export async function POST(req: NextRequest) {
